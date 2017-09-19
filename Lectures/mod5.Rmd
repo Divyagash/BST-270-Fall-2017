@@ -1,0 +1,570 @@
+---
+title: "Module 5"
+output: html_document
+---
+##Statistical Methods for Reproducible Science
+This module discusses the best practices for evaluating prediction models, i.e., determining whether or not they are accurate and reliable. 
+
+### 1. Coefficient of Determination ($R^2$)
+
+The coefficient of determination is one of the most popular validation metrics since it is easily interpretable and can be used in a variety of settings. We use it to understand if a model we have built is useful and/or accurate. $R^2$ typically takes a value $[0,1]$, with 1 indicating the maximum accuracy and 0 the minimum. Thus, higher values of $R^2$ are preferable. Below is the general setup and a couple of examples.
+
+#### Setting
+
+* $(X,Y) \sim \wp$, where: 
+    + Y is a  continuous random variable
+    + X is a random vector 
+    + $\wp$ is their unknown joint distribution
+ 
+* M(X) prediction model:  X  $\mapsto$  [  Prediction of Y  ]
+
+* Dataset: 
+
+\begin{pmatrix}
+X_1 & Y_1 \\ 
+. & . \\ 
+. & . \\ 
+. & . \\ 
+X_{N} & Y_{N} 
+\end{pmatrix}
+
+#### Example: Linear Regression
+* $Y_i = \beta_0 + \beta_1  X_i + \varepsilon_i$, where $\varepsilon_i \overset{iid}{\sim} N(0, \sigma^2)$
+* $\mathbb{E}[Y_i|X_i] =  \beta_0 + \beta_1  X_i$
+* $M(X_i) = \widehat{\beta_0}+ \widehat{\beta_1} X_i$
+
+##### Validation Metrics
+1. One possible metric:
+$$Z(M(X),  \wp) = \mathbb{E}[(M(X) - Y)^2]$$ 
+w.r.t. $\wp$
+
+Estimator of Z:  $$\frac{1}{N}\sum_{i=1}^{N} (M(X_i) - Y_i)^2 $$
+
+2. More interpretable metric: $$Z(M(X),  \wp) = 1-\frac{\mathbb{E}[(M(X) - Y)^2]}{Var(Y)}$$
+
+How to estimate $Z(M(X),  \wp)$?
+$$ R^2= 1- \frac{\frac{1}{N}\sum_{i=1}^{N} (M(X_i) - Y_i)^2} {\widehat{Var}(Y)}, R^2 \in (0,1)$$
+
+
+Let's consider the following vectors in R:
+
+```{r}
+y = c(5.2, 5.1, 5.6, 4.6, 11.3, 8.1, 7.8, 5.8, 5.1, 18, 4.9, 11.8, 5.2, 4.8, 7.9, 6.4, 20, 13.7, 5.1, 2.9)
+
+x1 = c(28, 26, 32, 24, 54, 59, 44, 30, 40, 82, 42, 58, 28, 20, 42, 47, 112, 85, 31, 26)
+
+x2 = c(3,3,2,1,4,2,3,2,1,6,3,4,1,5,3,1,6,5,2,2)
+```
+
+and let's suppose that `y` is the variable of interest.
+The regression model in R is fit using the command `lm()`. Let's try different regression models: 
+
+```{r}
+fit = lm(y ~ x1)
+library(ggplot2)
+qplot(x1, y)
+summary(fit)
+```
+
+
+```{r}
+fit2 = lm(y ~ x2)
+qplot(x2, y)
+```
+
+```{r}
+summary(fit2)
+```
+
+```{r}
+fit3 = lm(y ~ x1 + x2)
+#library(Rcmdr)
+#scatter3d(x1, y, x2)
+summary(fit3)
+```
+
+The estimate of $R^2$ can be easily obtained for each model as
+```{r}
+summary(fit)$r.squared
+summary(fit2)$r.squared
+summary(fit3)$r.squared
+```
+
+With linear regression, we are comparing the error associated with the linear model $M$ to the error associated with not knowing $X$, i.e., the best we can do to predict $Y$ is to use the mean of $Y$ in the overall population. The smaller this ratio the better, because it means our model is more accurate in the prediction of $Y$. The smaller this ratio, the higher the value of $R^2$, and the better the model. Which model would you choose as the prefered model for this example?
+
+#### More Advanced Example
+Let's use the ovarian cancer dataset from the "curatedOvarianData" package in R Bio-conductor. A detailed description is available [here.](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3625954/)
+First we must upload the data in R:
+
+```{r, hide=TRUE, warning=FALSE, message=FALSE}
+#source("https://bioconductor.org/biocLite.R")
+#biocLite("curatedOvarianData")
+library(curatedOvarianData)
+source(system.file("extdata", "patientselection.config", package = "curatedOvarianData"))
+set.seed(123)
+```
+
+Now, predict the expression of the gene in the first column using the expressions in columns 2,3,...,6. The data matrix can be obtained with the command `mat.gene = exprs(TCGA_eset)`.
+
+```{r}
+data("TCGA_eset")
+varLabels(TCGA_eset)
+mat.gene = exprs(TCGA_eset)
+
+y = mat.gene[1,]
+x = t(mat.gene[2:6,])
+
+dd = cbind(y, x)
+dd = as.data.frame(na.omit(dd))
+head(dd)
+tail(dd)
+
+m1 = lm(y~., data = dd)
+summary(m1)
+```
+
+What is the value of $R^2$?
+
+### 2. Brier Score
+
+Another common validation metric is the Brier score. Here we have the same setting as before, but our outcome $Y$ is binary. The lower the Brier score is for a set of predictions, the better the predictions are calibrated. Note that the Brier score, in its most common formulation, takes on a value between zero and one, since this is the largest possible difference between a predicted probability (which must be between zero and one) and the actual outcome (which can take on values of only 0 and 1).
+
+#### Setting
+
+* $(X,Y) \sim \wp$, where: 
+    + Y is a binary random variable
+    + X is a random vector 
+    + $\wp$ is their unknown joint distribution
+ 
+* M(X) prediction model:  X  $\mapsto$  [  Prediction of Y  ]
+
+* Dataset: 
+
+\begin{pmatrix}
+X_1 & Y_1 \\ 
+. & . \\ 
+. & . \\ 
+. & . \\ 
+X_{N} & Y_{N} 
+\end{pmatrix}
+
+#### Example: Logistic Regression
+
+\begin{align*} Y_i = \frac{e^{\beta_0 +\beta_1 X_i}}{1+e^{\beta_0 + \beta_1 X_i} } \\
+\\
+M(X_i) = \frac{e^{\widehat{\beta_0} +\widehat{\beta_1} X_i}}{1+e^{\widehat{\beta_0} + \widehat{\beta_1} X_i} } 
+\end{align*}
+
+* $Z(M(X),  \wp) = \mathbb{E}[(M(X) - Y)^2]$ w.r.t. $\wp$ 
+
+* How to estimate Z? 
+
+$$\frac{1}{N}\sum_{i=1}^{N} (M(X_i) - Y_i)^2 $$
+
+#### Example
+Upload the data set `birthwt` from the library MASS in R by the commands:
+
+```{r}
+library(MASS) 
+data(birthwt)
+attach(birthwt)
+str(birthwt)
+```
+
+The dataset has 189 observations and 10 variables. 
+It contains the data from a study that was conducted to identify the risk factors on low birth weight by Baystate Medical Center, Springfield, in Massachusetts during 1986. 
+The variable of interest is the binary variable `low`, which takes value 1 if the birth weight was less than 2.5 kg and 0 otherwise.
+
+The logistic regression is fitted by the command `glm()`, 
+where we need to specify the `family` (e.g. binomial) and the `link function` (e.g logit). Let's try several logistic models and look at their output:
+
+```{r}
+race = factor(race) # Let's treat this variable as categorical
+
+mod1 = glm(low ~ lwt + race + age + ftv, family = binomial(link = logit))
+
+summary(mod1)
+
+mod2 = glm(low ~ lwt + race, family = binomial(link = logit))
+
+summary(mod2)
+```
+
+The corresponding Brier scores are obtained as
+
+```{r}
+pred1 = predict(mod1, type='response') # type='response' gives the predicted probabilities
+head(pred1)
+brier1 = mean((pred1 - low)^2)
+print(brier1)
+
+pred2  = predict(mod2, type='response')
+brier2 = mean((pred2 - low)^2)
+print(brier2)
+```
+
+The Brier Score can be easily obtained also through the function `verify()` in the library verification:
+
+```{r, message=FALSE, hide=TRUE}
+library(verification)
+```
+
+```{r, message=FALSE, cache=TRUE}
+verify(low, pred1)$bs
+verify(low, pred2)$bs
+```
+
+#### More Advanced Example
+We will use the same ovarian cancer data set as before. Fit a binary regression model for "recurrence status" (after coding "recurrence" as 1 and "norecurrence" as 0) with covariates "age at initial pathologic diagnosis", "percent normal cells", "percent tumor cells" and "grade".
+
+1. Select the variables from the data set.
+```{r, cache=TRUE}
+y = TCGA_eset$recurrence_status
+y = ifelse(y == "recurrence", 1, 0)
+
+x = cbind(TCGA_eset$age_at_initial_pathologic_diagnosis,
+          TCGA_eset$percent_normal_cells,TCGA_eset$percent_tumor_cells, TCGA_eset$grade)
+
+
+bb = data.frame(na.omit(cbind(y,x)))
+head(bb)
+```
+
+2. Fit a logistic model.
+```{r, cache=TRUE, message=FALSE}
+l = glm(y~., data = bb, family=binomial(link='logit'))
+summary(l)
+```
+
+3. Compute the Brier Score.
+```{r, cache=TRUE, message=FALSE}
+pred.prob = predict(l,type = 'response')
+
+verify(bb$y,pred.prob)$bs
+```
+
+
+### 3. Area Under the Curve (AUC)
+
+Another common validation metric for binary outcomes is the area under the characteristic curve (AUC). The higher the AUC is for a set of predictions, the better the predictions. Note that the AUC takes on a value between 0 and 1. 
+
+#### Setting
+
+* $(X,Y) \sim \wp$, where: 
+    + Y is a binary random variable
+    + X is a random vector 
+    + $\wp$ is their unknown joint distribution
+ 
+* M(X) prediction model:  X  $\mapsto$  [  Prediction of Y  ]
+
+* Dataset: 
+
+\begin{pmatrix}
+X_1 & Y_1 \\ 
+. & . \\ 
+. & . \\ 
+. & . \\ 
+X_{N} & Y_{N} 
+\end{pmatrix}
+
+* $t \in [0,1]$: threshold
+
+* If $M(X_i) > t$, the unit is classified as "positive"
+* If $M(X_i) < t$, the unit is classified as "negative"
+* TP: True Positive
+* TN: True Negative
+* FP: False Positive
+* FN: False Negative
+* SN: Sensitivity = $\frac{TP}{TP+FN}$
+
+* SP: Specificity = $\frac{TN}{TN+FP}$
+
+The ROC curve is obtained by plotting the true positive (Sensitivity) as a function of the false positive (1-Specificity) for different values of $t$.
+That curve  shows the combinations of Sensitivity and Specificity  achieved  by  model  $M$. The AUC is the area under the ROC curve.
+
+
+#### Example
+
+Let's again use the low birth weight data set from before.
+
+```{r, message=FALSE}
+library(MASS)
+data("birthwt")
+attach(birthwt)
+race = factor(race)
+```
+
+Let’s consider again the logistic regression model computed previously,
+
+```{r}
+mod1 = glm(low ~ lwt + race + age + ftv, family = binomial(link=logit))
+mod2 = glm(low ~ lwt + race, family=binomial(link=logit))
+```
+
+and their corresponding predictions.
+
+
+```{r}
+pred1 = predict(mod1, type='response') 
+pred2  = predict(mod2, type='response')
+```
+
+The ROC and AUC curves are given by 
+
+```{r, message=FALSE}
+library(pROC)
+roc.mod1 = roc(low, pred1)
+roc.mod1$auc
+ 
+roc.mod2 = roc(low, pred2)
+roc.mod2$auc
+
+plot(roc.mod1, col="blue",print.auc = TRUE)
+plot(roc(low, pred2), col="red", add =T, print.auc = TRUE,  print.auc.y = .4)
+legend("bottomright", c("Mod1","Mod2"), col=c("blue","red"), lty=c(1,1), lwd=c(2,2))
+```
+
+
+#### Another Example
+Let's use the same ovarian cancer data set as before. Consider the variable "recurrence status" (code "recurrence" as 1, "norecurrence" as 0) and
+use the same set of covariates as before combined with a subset of genomic measurements defined by
+```{r}
+subset.gene = t(mat.gene[1 : 200, ])
+x.new= cbind(x,subset.gene )
+
+rr = data.frame(na.omit(cbind(y,x.new)))
+head(rr)
+```
+
+
+1. Fit a logistic model.
+```{r}
+o = glm(y~., data = rr, family=binomial(link='logit'))
+summary(o)
+```
+
+2. Compute the AUC.
+```{r}
+pred.prob2 = predict(o,type='response')
+rr.b = roc(rr$y, pred.prob2)
+rr.b
+```
+
+### 4. C-index (Concordance)
+
+#### General Problem Setting
+
+* $(X,Y) \sim \wp$, where: 
+    + Y is a  continuous random variable
+    + X is a random vector 
+    + $\wp$ is their unknown joint distribution
+ 
+* M(X) prediction model:  X  $\mapsto$  [  Prediction of Y  ]
+
+
+#### A. No Censored Data
+* Dataset: 
+
+\begin{pmatrix}
+X_1 & Y_1 \\ 
+. & . \\ 
+. & . \\ 
+. & . \\ 
+X_{N} & Y_{N} 
+\end{pmatrix}
+
+Validation Metric:
+
+* $(X_A, Y_A) \sim \wp$, $(X_B, Y_B) \sim \wp$ and they are independent.
+* $Z(M(X), \wp)=P(M(X_A)<M(X_B)|Y_A>Y_B)$
+* Estimate of $Z(M(X), \wp)$:
+$$ Z(M(X), \widehat{P}) = \frac{\sum_{i, j} 1(M(X_i)>M(X_j), Y_i<Y_j)}{n (n-1)}$$
+   
+where $\widehat{P}$ is the empirical distribution of the data.
+
+
+
+#### B. Censored Data - Fixed censoring time
+
+* $\tau$: fixed censoring time. All the observations are censored at the same time. 
+
+* Dataset: 
+
+$$ \begin{pmatrix}
+X_1 & Y_1 \\ 
+. & . \\ 
+X_i & Y^+_i \\ 
+. & . \\ 
+X_{N} & Y_{N} 
+\end{pmatrix} $$
+
+where $Y^{+}_i$ denotes that the event doesn't occur before the censoring time.
+
+Validation Metric:
+
+* $(X_A, Y_A) \sim \wp$, $(X_B, Y_B) \sim \wp$ and they are independent copies.
+
+* $Z(M(X), \wp)=P(M(X_A)>M(X_B)|Y_A<Y_B, Y_A < \tau)$
+
+* Estimate of $Z(M(X), \wp)$:
+
+ $$  \frac{\sum_{i, j} 1(M(X_i)>M(X_j), Y_i<Y_j, Y_i< \tau)}{\sum_{i,j} 1(Y_i<Y_j, Y_i< \tau)}.$$
+
+
+#### C. Censored Data - Distribution of right censoring times
+
+* $C$ right censoring time
+* $C \sim G$
+
+* Dataset 
+
+$$ \begin{pmatrix}
+X_1 & Y_1 & \Delta_1\\ 
+. & . & \\ 
+X_i & Y^{+}_i & \Delta_i \\
+. & . \\ 
+X_{N} & Y_{N}  & \Delta_N
+\end{pmatrix}$$
+
+where $\Delta_i$ is equal to 0 if the observation is  censored, 1 otherwise.
+
+* Non-informative (random) censoring
+    * Each subject has a censoring time that is statistically independent of their failure time.
+    * The observed value for an individual is the $\text{min}(C_i, Y_i)$
+
+Validation Metric:
+
+* $(X_A, Y_A) \sim \wp$, $(X_B, Y_B) \sim \wp$ and they are independent
+* $Z(M(X), \wp)=P(M(X_A)>M(X_B)|Y_A<Y_B, Y_A < \tau)$ 
+
+* Estimate of $Z(M(X), \wp)$:
+
+$$ \frac{\sum_{i, j} \Delta_{i} (\widehat{G}(Y_i))^{-2}
+ 1(M(x_i)>M(x_j) 1(Y_i<Y_j) 1(Y_i < C)}{\sum_{i,j} \Delta_{i} (\widehat{G}(Y_i))^{-2}  1(Y_i<Y_j, Y_i< C)}$$ 
+ 
+where $\widehat{G}$ is the estimated  censoring  distribution obtained  through standard  Kaplan-Meier estimation.
+
+#### Example
+The following data come from Klein and Moeschberger (1997) *Survival Analysis Techniques for Censored and truncated data*, Springer. National Longitudinal Survey of Youth Handbook The Ohio State University, 1995. The descriptions of the variables are below.
+
+* `group` Disease Group 1-ALL, 2-AML Low Risk, 3-AML High Risk
+* `t1` Time To Death Or On Study Time
+* `t2` Disease Free Survival Time (Time To Relapse, Death Or End Of Study)
+* `d1` Death Indicator 1-Dead 0-Alive
+* `d2` Relapse Indicator 1-Relapsed, 0-Disease Free
+* `d3` Disease Free Survival Indicator 1-Dead Or Relapsed, 0-Alive Disease Free)
+* `ta` Time To Acute Graft-Versus-Host Disease
+* `da` Acute GVHD Indicator 1-Developed Acute GVHD 0-Never Developed Acute GVHD)
+* `tc` Time To Chronic Graft-Versus-Host Disease
+* `dc` Chronic GVHD Indicator 1-Developed Chronic GVHD 0-Never Developed Chronic GVHD
+* `tp` Time To Chronic Graft-Versus-Host Disease
+* `dp` Platelet Recovery Indicator 1-Platelets Returned To Normal, 0-Platelets Never Returned to Normal
+* `z1` Patient Age In Years
+* `z2` Donor Age In Years
+* `z3` Patient Sex: 1-Male, 0-Female
+* `z4` Donor Sex: 1-Male, 0-Female
+* `z5` Patient CMV Status: 1-CMV Positive, 0-CMV Negative
+* `z6` Donor CMV Status: 1-CMV Positive, 0-CMV Negative
+* `z7` Waiting Time to Transplant In Days
+* `z8` FAB: 1-FAB Grade 4 Or 5 and AML, 0-Otherwise
+* `z9` Hospital: 1-The Ohio State University, 2-Alferd , 3-St. Vincent, 4-Hahnemann
+* `z10` MTX Used as a Graft-Versus-Host- Prophylactic: 1-Yes 0-No
+
+
+
+Let's start by uploading the following packages and data:
+
+```{r, message=FALSE}
+library(survival)
+library(KMsurv)
+library(survAUC)
+library(dynpred)
+data(bmt)
+```
+
+Let's look at the data:
+
+```{r}
+attach(bmt)
+head(bmt)
+table(group)
+summary(t2[group == 1])
+summary(t2[group == 2])
+summary(t2[group == 3])
+```
+
+Let's estimate the KM disease-free survival curves for the three groups:
+
+```{r}
+mod.surv = survfit(Surv(t2,d3) ~ group, data=bmt )
+plot(mod.surv, ylab="Estimate Disease Free Survival", xlab="Time(days)",main="KM Estimate", col=1:3, lwd=2)
+legend("topright", legend=c("Group1", "Group2", "Group3"),  col=1:3 , lty=1, bty="n")
+```
+
+Let's consider Group 3 only and fit a Cox proportional hazards model using `t2` as the event time and `d3` as the censoring information with a single predictor `z1` (Patient Age in Years).
+
+```{r}
+# Split group 3 into training and testing sets
+bmt.train = bmt[93:114,]
+bmt.test = bmt[115:136,]
+
+# Fit a Cox proportional hazards regression model using the training data
+mod.surv.train = coxph(Surv(t2, d3) ~ z1, data = bmt.train)
+ 
+# Compute prediction summaries for the remaining validation component of the data set
+lpnew = predict(mod.surv.train, new.data = bmt.test )
+  
+Surv.rsp = Surv(bmt.train$t2, bmt.train$d3)    # The outcomes of the training data
+Surv.rsp.new = Surv(bmt.test$t2, bmt.test$d3)  # The outcome of the test data
+```
+
+We will use Uno's estimator which is based on inverse-probability-of-censoring weights and does not assume a specific working model for deriving the predictor lpnew. It is assumed, however, that there is a one-to-one relationship between the predictor and the expected survival times conditional on the predictor. Note that the estimator implemented in UnoC is restricted to situations where the random censoring assumption holds. The estimate for the C-index is:
+
+```{r}
+Cstat = UnoC(Surv.rsp, Surv.rsp.new, lpnew)
+Cstat
+```
+
+
+#### Another example
+
+Let's go back to the ovarian cancer data set. Consider a Cox model for the time to event variable `days_to_death` and censoring information `vital_status` with a single predictor `tumorstage`.
+
+1. Select the variables
+```{r}
+y1 = TCGA_eset$days_to_death
+y2 = TCGA_eset$vital_status
+y2 = ifelse(y2 == "deceased",1,0)
+V = as.numeric(TCGA_eset$tumorstage)
+ttt = cbind(y1,y2,V)
+```
+
+2. Remove the rows with NA 
+```{r}
+ttt = as.data.frame(na.omit(ttt)) 
+```
+
+3. Fit a Cox model on a training portion of the data set
+```{r}
+bmt.train = ttt[1:277, ]
+bmt.test = ttt[278:554, ]
+mod.surv.train = coxph(Surv(y1,y2) ~ V, data = bmt.train)
+```
+
+4. Compute prediction summaries for the remaining validation component of the data set
+```{r}
+lpnew = predict(mod.surv.train, new.data = bmt.test)
+```
+
+5. Compute the C-index
+
+```{r}
+Surv.rsp = Surv(bmt.train$y1, bmt.train$y2)
+Surv.rsp.new = Surv(bmt.test$y1, bmt.test$y2)
+
+UnoC(Surv.rsp, Surv.rsp.new, lpnew)
+```
+
+
+
+
